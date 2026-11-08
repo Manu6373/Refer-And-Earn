@@ -5,19 +5,20 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// Health check
+// Home
 app.get("/", (req, res) => {
   res.send("Refer & Earn Ads Backend is Running!");
 });
 
+// Health check
 app.get("/health", (req, res) => {
   res.json({
     status: "online",
-    service: "AdsGram Reward Backend"
+    service: "Refer & Earn Ads Backend"
   });
 });
 
-// Get advertisement from AdsGram
+// Existing AdsGram route - preserved
 app.get("/ad/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
@@ -53,20 +54,73 @@ app.get("/ad/:userId", async (req, res) => {
     }
 
     const ad = await response.json();
+    res.json(ad);
 
-    res.json({
-      text_html: ad.text_html,
-      click_url: ad.click_url,
-      button_name: ad.button_name,
-      image_url: ad.image_url,
-      button_reward_name: ad.button_reward_name,
-      reward_url: ad.reward_url
+  } catch (error) {
+    console.error("AdsGram error:", error);
+    res.status(500).json({
+      error: "Internal server error"
+    });
+  }
+});
+
+// NEW: RichAds integration
+app.get("/richads/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!/^\d+$/.test(userId)) {
+      return res.status(400).json({
+        error: "Invalid Telegram User ID"
+      });
+    }
+
+    const publisherId = process.env.RICHADS_PUBLISHER_ID;
+
+    if (!publisherId) {
+      return res.status(503).json({
+        error: "RichAds Publisher ID missing"
+      });
+    }
+
+    const response = await fetch(
+      "http://15068.xml.adx1.com/telegram-mb",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          language_code: "en",
+          publisher_id: publisherId,
+          telegram_id: userId,
+          production: false
+        })
+      }
+    );
+
+    const responseText = await response.text();
+
+    let ads;
+
+    try {
+      ads = JSON.parse(responseText);
+    } catch {
+      return res.status(502).json({
+        error: "Invalid RichAds response"
+      });
+    }
+
+    res.status(response.status).json({
+      status: response.status,
+      ads: ads
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("RichAds error:", error);
+
     res.status(500).json({
-      error: "Internal server error"
+      error: "RichAds connection failed"
     });
   }
 });
